@@ -61,11 +61,11 @@ uint8_t modeSwitchPreviousValue = LOW;   // the previously read modeSwitchValue 
 
 
 void setup() {
-  config_input_with_pullup(MODE_SWITCH_IN_PIN);
-  config_input(POTENTIOMETER_IN_PIN);
+  configInputWithPullup(MODE_SWITCH_IN_PIN);
+  configInput(POTENTIOMETER_IN_PIN);
   
-  config_output(STATUS_LED_OUT_PIN);
-  config_output(MOTOR_OUT_PIN);
+  configOutput(STATUS_LED_OUT_PIN);
+  configOutput(MOTOR_OUT_PIN);
 
   #ifdef VERBOSE
   // Setup Serial Monitor
@@ -244,15 +244,15 @@ void invertStatusLED() {
 }
 
 
-void config_input(uint8_t pin) {
+void configInput(uint8_t pin) {
  pinMode(pin, INPUT);
 }
 
-void config_input_with_pullup(uint8_t pin) {
+void configInputWithPullup(uint8_t pin) {
   pinMode(pin, INPUT);
   digitalWrite(pin, HIGH);              // Activate pull-up resistor on pin (input)
 }
 
-void config_output(uint8_t pin) {
+void configOutput(uint8_t pin) {
   pinMode(pin, OUTPUT);
 }
