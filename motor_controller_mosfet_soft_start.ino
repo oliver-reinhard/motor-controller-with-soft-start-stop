@@ -2,11 +2,12 @@
 // CONFIGURABLE VALUES
 // --------------------
 
-//#define VERBOSE
+#define VERBOSE
 
 const uint8_t MODE_SWITCH_IN_PIN = 8; // digital in
 const uint8_t POTENTIOMETER_IN_PIN = A0;  // analog in, motor power demand
-const uint8_t STATUS_LED_OUT_PIN = 13; // digital out; is on when motor is of, blinks during transitioning
+
+const uint8_t STATUS_LED_OUT_PIN = 13; // digital out; is on when motor is off, blinks while transitioning
 const uint8_t MOTOR_OUT_PIN = 9; // PWM
 
 const uint16_t MOTOR_MAX_VOLTAGE = 8000; // [mV]
@@ -22,7 +23,7 @@ const uint16_t MOTOR_STOP_DURATION = 1000;  // [ms] duration from full throttle 
 
 uint8_t statusLEDState = LOW;
 
-const uint16_t ANALOG_IN_MIN = 0;  // Arduino constant
+const uint16_t ANALOG_IN_MIN = 0;     // Arduino constant
 const uint16_t ANALOG_IN_MAX = 1023;  // Arduino constant
 
 const uint8_t ANALOG_OUT_MIN = 0;  // Arduino constant
@@ -43,7 +44,7 @@ MotorState motorState = MOTOR_OFF;
 const uint16_t MOTOR_START_INCREMENT = (ANALOG_OUT_MAX - MOTOR_OUT_LOW_THRESHOLD) * CONTROL_CYCLE_DURATION / MOTOR_START_DURATION;
 const uint16_t MOTOR_STOP_INCREMENT = (ANALOG_OUT_MAX - MOTOR_OUT_LOW_THRESHOLD) * CONTROL_CYCLE_DURATION / MOTOR_STOP_DURATION;
 
-const uint16_t MOTOR_DUTY_VALUE_MIN_CHANGE = 5; // manual potentiometer changes are only acted upon if delta to current value >= this value
+const uint16_t MOTOR_DUTY_VALUE_MIN_CHANGE = 5; // manual potentiometer changes are considered only if delta to current value >= this value
 
 uint8_t motorTargetDutyValue = ANALOG_OUT_MIN; // potentiometer value read from input pin
 uint8_t motorPreviousTargetDutyValue = ANALOG_OUT_MIN;
@@ -60,9 +61,11 @@ uint8_t modeSwitchPreviousValue = LOW;   // the previously read modeSwitchValue 
 
 
 void setup() {
-  pinMode(MODE_SWITCH_IN_PIN, INPUT);
-  pinMode(STATUS_LED_OUT_PIN, OUTPUT);
-  pinMode(MOTOR_OUT_PIN, OUTPUT);
+  config_input_with_pullup(MODE_SWITCH_IN_PIN);
+  config_input(POTENTIOMETER_IN_PIN);
+  
+  config_output(STATUS_LED_OUT_PIN);
+  config_output(MOTOR_OUT_PIN);
 
   #ifdef VERBOSE
   // Setup Serial Monitor
@@ -105,11 +108,15 @@ bool modeSwitchPressed(uint32_t now) {
     uint8_t value = digitalRead(MODE_SWITCH_IN_PIN);
     lastModeSwitchReadingTime = now;
 
-    // check to see if you just pressed the button (i.e. the input went from LOW to HIGH), 
+    // check to see if you just pressed the button (i.e. the input went from HIGH (pull-up!) to LOW), 
     // and we waited long enough since the last press to ignore any noise:
     if (value != modeSwitchPreviousValue) {
       modeSwitchPreviousValue = value;
-      return value == HIGH;
+      #ifdef VERBOSE
+        Serial.print("Mode Switch: ");
+        Serial.println(value);
+      #endif
+      return value == LOW;
     }
   }
   return false;
@@ -234,4 +241,18 @@ void setStatusLED(int value) {
 
 void invertStatusLED() {
   setStatusLED(statusLEDState == HIGH ? LOW : HIGH);
+}
+
+
+void config_input(uint8_t pin) {
+ pinMode(pin, INPUT);
+}
+
+void config_input_with_pullup(uint8_t pin) {
+  pinMode(pin, INPUT);
+  digitalWrite(pin, HIGH);              // Activate pull-up resistor on pin (input)
+}
+
+void config_output(uint8_t pin) {
+  pinMode(pin, OUTPUT);
 }
