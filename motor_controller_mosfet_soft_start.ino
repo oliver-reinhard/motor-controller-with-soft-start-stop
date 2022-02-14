@@ -26,8 +26,8 @@
   const uint8_t MOTOR_OUT_PIN = PB1; // PWM
 #endif 
 
-const uint16_t MOTOR_MAX_VOLTAGE = 8000; // [mV]
-const uint16_t MOTOR_LOW_THRESHOLD_VOLTAGE = 1000; // [mV] // below this voltage, the motor will not move
+const uint16_t MOTOR_MAX_VOLTAGE           = 6000; // [mV]
+const uint16_t MOTOR_LOW_THRESHOLD_VOLTAGE = 2500; // [mV] // below this voltage, the motor will not move
 
 // Motor soft start and stop:
 const uint16_t MOTOR_START_DURATION = 2000;  // [ms] duration from full stop to full throttle
@@ -37,8 +37,21 @@ const uint16_t MOTOR_STOP_DURATION = 1000;  // [ms] duration from full throttle 
 // DO NOT TOUCH THE VALUES OF THE FOLLOWING CONSTANTS
 // --------------------
 
-uint8_t statusLEDState = LOW;
+//
+// CONTROLLER STATES
+//
 
+enum MotorState {MOTOR_OFF, MOTOR_STARTING, MOTOR_ON, MOTOR_STOPPING};
+
+MotorState motorState = MOTOR_OFF;
+
+// Control cycle: output values are set only once per cycle
+const uint32_t CONTROL_CYCLE_DURATION = 100; // [ms]
+
+
+//
+// ANALOG IN
+//
 const uint16_t ANALOG_IN_MIN = 0;     // Arduino constant
 #ifdef _ATMEGA328_
 const uint16_t ANALOG_IN_MAX = 1023;  // Arduino constant
@@ -48,20 +61,16 @@ const uint16_t ANALOG_IN_MAX = 255;  // Arduino constant
 uint16_t lastAnalogInValue = 0;
 #endif
 
-const uint8_t ANALOG_OUT_MIN = 0;     // Arduino constant
-const uint8_t ANALOG_OUT_MAX = 255;   // Arduino constant
+//
+// ANALOG OUT
+//
+// PWM frequency = 1 MHz / 1 / 200 = 5 kHz 
+const uint8_t TIMER1_PRESCALER = 1;     // divide by 1
+const uint8_t TIMER1_COUNT_TO = 200;    // count to 255
+
+const uint8_t ANALOG_OUT_MIN = 0;                 // Arduino constant
+const uint8_t ANALOG_OUT_MAX = TIMER1_COUNT_TO;   // PWM control
 const uint8_t MOTOR_OUT_LOW_THRESHOLD = (long) ANALOG_OUT_MAX * MOTOR_LOW_THRESHOLD_VOLTAGE /  MOTOR_MAX_VOLTAGE;
-
-// Control cycle: output values are set only once per cycle
-const uint32_t CONTROL_CYCLE_DURATION = 100; // [ms]
-
-enum MotorState {MOTOR_OFF, MOTOR_STARTING, MOTOR_ON, MOTOR_STOPPING};
-
-MotorState motorState = MOTOR_OFF;
-
-// "Debounce" Mode-switch button:
-uint32_t lastMotorStateChangeTime = 0;
-const uint32_t MIN_CONTROLLER_STATE_PERSISTENCE = 1000; // milliseconds
 
 // Motor soft start and soft stop:
 const uint16_t MOTOR_START_INCREMENT = (ANALOG_OUT_MAX - MOTOR_OUT_LOW_THRESHOLD) * CONTROL_CYCLE_DURATION / MOTOR_START_DURATION;
@@ -72,11 +81,25 @@ const uint16_t MOTOR_DUTY_VALUE_MIN_CHANGE = 5; // manual potentiometer changes 
 uint8_t motorTargetDutyValue = ANALOG_OUT_MIN; // potentiometer value read from input pin
 uint8_t motorPreviousTargetDutyValue = ANALOG_OUT_MIN;
 uint8_t motorActualDutyValue = ANALOG_OUT_MIN; // value actually set on output pin
-
 uint32_t transitionBeginTime = 0;
 uint8_t transitioningDutyValue = ANALOG_OUT_MIN; // incremented in discrete steps until motor is at its target speed or its low end
 
+//
+// DIGITAL IN
+//
 
+// "Debounce" Mode-switch button:
+uint32_t lastMotorStateChangeTime = 0;
+const uint32_t MIN_CONTROLLER_STATE_PERSISTENCE = 1000; // milliseconds
+
+//
+// DIGITAL OUT
+//
+uint8_t statusLEDState = LOW;
+
+//
+// SETUP
+//
 void setup() {
   configInputWithPullup(MODE_SWITCH_IN_PIN);
   configInput(POTENTIOMETER_IN_PIN);
@@ -86,6 +109,7 @@ void setup() {
   
   configInt0Interrupt(); // triggered by PD2 (mode switch)
   configAnalogDigitalConversion0();
+  configPWM1();
 
   #ifdef VERBOSE
   // Setup Serial Monitor
@@ -99,6 +123,9 @@ void setup() {
   setStatusLED(HIGH);
 }
 
+//
+// LOOP
+//
 void loop() {    
   if (motorTargetDutyValueChanged()) {
     handleTargetDutyValueChange(motorTargetDutyValue);
@@ -112,9 +139,9 @@ void loop() {
 }
 
 //
-// Mode Switch pressed
+// Mode Switch pressed - Interrupt service routine for INT0
 //
-ISR (INT0_vect) {       // Interrupt service routine for INT0
+ISR (INT0_vect) {       
   uint32_t now = millis();
   if (now - lastMotorStateChangeTime < MIN_CONTROLLER_STATE_PERSISTENCE) {
     #ifdef VERBOSE
@@ -153,13 +180,25 @@ ISR (INT0_vect) {       // Interrupt service routine for INT0
   transitionBeginTime = now;
 }
 
+//
+// Target value modified via potentiometer
+//
 bool motorTargetDutyValueChanged() {
   uint16_t potValue = readPotentiometer();
   uint8_t value = map(potValue, ANALOG_IN_MIN, ANALOG_IN_MAX, MOTOR_OUT_LOW_THRESHOLD , ANALOG_OUT_MAX); // Map the potentiometer value 
   // only act if target value moves by at least the min. change amount:
   if (abs((short int) value - (short int) motorPreviousTargetDutyValue) >= MOTOR_DUTY_VALUE_MIN_CHANGE) {
+    // with this rule, we may never get to the extremes, MOTOR_OUT_LOW_THRESHOLD and ANALOG_OUT_MAX --> additional rules below
     motorTargetDutyValue = value;
     motorPreviousTargetDutyValue = value;
+    return true;
+  } else if (value < MOTOR_OUT_LOW_THRESHOLD + MOTOR_DUTY_VALUE_MIN_CHANGE) {
+    motorTargetDutyValue = MOTOR_OUT_LOW_THRESHOLD;
+    motorPreviousTargetDutyValue = MOTOR_OUT_LOW_THRESHOLD;
+    return true;
+  } else if (value > ANALOG_OUT_MAX - MOTOR_DUTY_VALUE_MIN_CHANGE) {
+    motorTargetDutyValue = ANALOG_OUT_MAX;
+    motorPreviousTargetDutyValue = ANALOG_OUT_MAX;
     return true;
   }
   return false;
@@ -175,6 +214,9 @@ void handleTargetDutyValueChange(uint8_t newTargetDutyValue) {
     #endif
 }
 
+//
+// State controller
+//
 void handleModeTransition(uint8_t targetDutyValue) {
   switch (motorState) {
     case MOTOR_STARTING:
@@ -233,25 +275,17 @@ void handleModeTransition(uint8_t targetDutyValue) {
   }
 }
 
-uint16_t readPotentiometer() {
-  #ifdef _ATMEGA328_
-    return analogRead(POTENTIOMETER_IN_PIN);
-  #endif
-  #ifdef _ATTINY85_
-    ADCSRA|=(1<<ADSC);                     //start ADC conversion
-    loop_until_bit_is_clear(ADCSRA, ADSC); //  wait until done
-    uint16_t adcValue = ADCH;              // read left-adjusted 8 bits --> 0…255
-//    if (abs(adcValue - lastAnalogInValue > 5)) {
-//      OCR1A = adcValue * (TIMER1_25_kHz_COUNT_TO + 1) / 256;
-//      lastAnalogInValue = adcValue;
-//    }
-    return adcValue;
-  #endif
-}
-
+//
+// Utility Routines
+//
 void setMotorDutyValue(uint8_t value) {
   motorActualDutyValue = value;
+  #ifdef _ATMEGA328_
   analogWrite(MOTOR_OUT_PIN, motorActualDutyValue); // Send PWM signal
+  #endif
+  #ifdef _ATTINY85_
+    OCR1A = value;
+  #endif
 }
 
 void setStatusLED(uint8_t value) {
@@ -263,7 +297,6 @@ void invertStatusLED() {
   setStatusLED(statusLEDState == HIGH ? LOW : HIGH);
 }
 
-
 void configInput(uint8_t pin) {
   pinMode(pin, INPUT);
 }
@@ -271,6 +304,18 @@ void configInput(uint8_t pin) {
 void configInputWithPullup(uint8_t pin) {
   pinMode(pin, INPUT);
   digitalWrite(pin, HIGH);              // Activate pull-up resistor on pin (input)
+}
+
+uint16_t readPotentiometer() {
+  #ifdef _ATMEGA328_
+    return analogRead(POTENTIOMETER_IN_PIN);
+  #endif
+  #ifdef _ATTINY85_
+    ADCSRA|=(1<<ADSC);                     // Start ADC conversion
+    loop_until_bit_is_clear(ADCSRA, ADSC); // Wait until done
+    uint16_t adcValue = ADCH;              // read left-adjusted 8 bits --> 0…255
+    return adcValue;
+  #endif
 }
 
 void configOutput(uint8_t pin) {
@@ -313,5 +358,47 @@ void configAnalogDigitalConversion0() {
     
     ADCSRA |= (1<<ADPS1) | (1<<ADPS0);     // ADC clock prescaler /8 */
     ADCSRA |= (1<<ADEN);                   // enable ADC */
+  #endif
+}
+
+void configPWM1() {
+  #ifdef _ATMEGA328_
+    // nothing --> analogWrite as is
+  #endif
+  #ifdef _ATTINY85_
+  
+  // Configure Timer/Counter1 Control Register 1 (TCR1) 
+  // | CTC1 | PWM1A | COM1A | CS1 |
+  // |  1   |  1    |  2    | 4   |  ->  #bits
+  //
+  // CTC1 - Clear Timer/Counter on Compare Match: When set (==1), TCC1 is reset to $00 in the CPU clock cycle after a compare match with OCR1C register value.
+  // PWM1A - Pulse Width Modulator A Enable: When set (==1), enables PWM mode based on comparator OCR1A in TC1 and the counter value is reset to $00 in the CPU clock cycle after a compare match with OCR1C register value.
+  // COM1A - Comparator A Output Mode: determines output-pin action following a compare match with compare register A (OCR1A) in TC1
+  // CS1 - Clock Select Bits: defines the prescaling source of TC1
+  //
+  // CTC1 = 1 --> count from 0, 1, 2 .. OCR1C, 0, 1, 2 .. ORC1C, etc 
+  // PWM1A = 1 --> PWM based on OCR1A
+  // COM1A = 10 --> Clear the OC1A output line for each compare match with OCR1A, set on $00
+  // CS0 = 0001 --> prescale = PCK/1 
+
+  // Clear all TCCR1 bits:
+  TCCR1 &= 0x00;      // Clear 
+
+  // Clear Timer/Counter on Compare Match
+  TCCR1 |= (1<<CTC1);
+  
+  // Enable PWM A
+  TCCR1 |= (1<<PWM1A);
+  
+  // On Compare Match with OCR1A (counter == OCR1A): Clear the output line (-> LOW), set on $00
+  TCCR1 |= (1<<COM1A1);
+
+  // Set PWM frequency configuration:
+  TCCR1 |= TIMER1_PRESCALER;
+  // Count 0,1,2..compare-match,0,1,2..compare-match, etc
+  OCR1C = TIMER1_COUNT_TO;
+
+  // Determines Duty Cycle: OCR1A / OCR1C e.g. value of 50 / 200 --> 25%
+  OCR1A = 0;
   #endif
 }
