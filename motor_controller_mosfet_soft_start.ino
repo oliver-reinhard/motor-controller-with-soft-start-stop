@@ -6,6 +6,17 @@
 // CONFIGURABLE VALUES
 // --------------------
 
+const uint16_t MOTOR_MAX_VOLTAGE           = 6000; // [mV]
+const uint16_t MOTOR_LOW_THRESHOLD_VOLTAGE = 2500; // [mV] // below this voltage, the motor will not rotate
+
+// Motor soft start and stop:
+const uint16_t MOTOR_START_DURATION = 2000;  // [ms] duration from full stop to full throttle
+const uint16_t MOTOR_STOP_DURATION = 1000;  // [ms] duration from full throttle to full stop
+
+// --------------------
+// DO NOT TOUCH THE VALUES OF THE FOLLOWING CONSTANTS
+// --------------------
+
 //#define _ATMEGA328_
 #define _ATTINY85_
 
@@ -25,17 +36,6 @@
   const uint8_t STATUS_LED_OUT_PIN = PB0; // digital out; is on when motor is off, blinks while transitioning
   const uint8_t MOTOR_OUT_PIN = PB1; // PWM
 #endif 
-
-const uint16_t MOTOR_MAX_VOLTAGE           = 6000; // [mV]
-const uint16_t MOTOR_LOW_THRESHOLD_VOLTAGE = 2500; // [mV] // below this voltage, the motor will not move
-
-// Motor soft start and stop:
-const uint16_t MOTOR_START_DURATION = 2000;  // [ms] duration from full stop to full throttle
-const uint16_t MOTOR_STOP_DURATION = 1000;  // [ms] duration from full throttle to full stop
-
-// --------------------
-// DO NOT TOUCH THE VALUES OF THE FOLLOWING CONSTANTS
-// --------------------
 
 //
 // CONTROLLER STATES
@@ -112,11 +112,11 @@ void setup() {
   configPWM1();
 
   #ifdef VERBOSE
-  // Setup Serial Monitor
-  Serial.begin(9600);
-  
-  Serial.print("Motor out low threshold: ");
-  Serial.println(MOTOR_OUT_LOW_THRESHOLD);
+    // Setup Serial Monitor
+    Serial.begin(9600);
+    
+    Serial.print("Motor out low threshold: ");
+    Serial.println(MOTOR_OUT_LOW_THRESHOLD);
   #endif
   
   setMotorDutyValue(ANALOG_OUT_MIN);
@@ -186,7 +186,7 @@ ISR (INT0_vect) {
 bool motorTargetDutyValueChanged() {
   uint16_t potValue = readPotentiometer();
   uint8_t value = map(potValue, ANALOG_IN_MIN, ANALOG_IN_MAX, MOTOR_OUT_LOW_THRESHOLD , ANALOG_OUT_MAX); // Map the potentiometer value 
-  // only act if target value moves by at least the min. change amount:
+  // Only act if target value moves by at least the min. change amount:
   if (abs((short int) value - (short int) motorPreviousTargetDutyValue) >= MOTOR_DUTY_VALUE_MIN_CHANGE) {
     // with this rule, we may never get to the extremes, MOTOR_OUT_LOW_THRESHOLD and ANALOG_OUT_MAX --> additional rules below
     motorTargetDutyValue = value;
@@ -281,7 +281,7 @@ void handleModeTransition(uint8_t targetDutyValue) {
 void setMotorDutyValue(uint8_t value) {
   motorActualDutyValue = value;
   #ifdef _ATMEGA328_
-  analogWrite(MOTOR_OUT_PIN, motorActualDutyValue); // Send PWM signal
+    analogWrite(MOTOR_OUT_PIN, value); // Send PWM signal
   #endif
   #ifdef _ATTINY85_
     OCR1A = value;
@@ -337,17 +337,18 @@ void configAnalogDigitalConversion0() {
   #ifdef _ATMEGA328_
     // nothing --> analogRead
   #endif
+  
   #ifdef _ATTINY85_
     // | REFS1 | REFS0 | ADLAR | REFS2 | MUX[3:0] |
     // |  1    |  1    |  1    |  1    |  4       | ->  #bits
     
     // Clear all MUX bits:
-    ADMUX = 0x00; 
-    // REFS[0:2] = 000: reference voltage --> VCC 
+    // REFS[0:2] = 000: reference voltage == VCC 
     // ADLAR = 0 -->  Right-adjust
     // MUX = 0000 --> ADC0 (PB5)
+    ADMUX = B00000000; 
     
-    // Set Left-Adjust Result -> read only the 8 bits from ADCH:
+    // Set Left-Adjust Result -> read only the 8 bits from ADCH, do not read ADCL
     ADMUX |= (1<<ADLAR);
     
     // Set PB4:
@@ -363,42 +364,37 @@ void configAnalogDigitalConversion0() {
 
 void configPWM1() {
   #ifdef _ATMEGA328_
-    // nothing --> analogWrite as is
+    // nothing --> use analogWrite as is
+    // No specific PWM frequency
   #endif
+  
   #ifdef _ATTINY85_
+    // Configure Timer/Counter1 Control Register 1 (TCR1) 
+    // | CTC1 | PWM1A | COM1A | CS |
+    // |  1   |  1    |  2    | 4  |  ->  #bits
+    //
+    // CTC1 - Clear Timer/Counter on Compare Match: When set (==1), TCC1 is reset to $00 in the CPU clock cycle after a compare match with OCR1C register value.
+    // PWM1A - Pulse Width Modulator A Enable: When set (==1), enables PWM mode based on comparator OCR1A in TC1 and the counter value is reset to $00 in the CPU clock cycle after a compare match with OCR1C register value.
+    // COM1A - Comparator A Output Mode: determines output-pin action following a compare match with compare register A (OCR1A) in TC1
+    // CS - Clock Select Bits: defines the prescaling factor of TC1
   
-  // Configure Timer/Counter1 Control Register 1 (TCR1) 
-  // | CTC1 | PWM1A | COM1A | CS1 |
-  // |  1   |  1    |  2    | 4   |  ->  #bits
-  //
-  // CTC1 - Clear Timer/Counter on Compare Match: When set (==1), TCC1 is reset to $00 in the CPU clock cycle after a compare match with OCR1C register value.
-  // PWM1A - Pulse Width Modulator A Enable: When set (==1), enables PWM mode based on comparator OCR1A in TC1 and the counter value is reset to $00 in the CPU clock cycle after a compare match with OCR1C register value.
-  // COM1A - Comparator A Output Mode: determines output-pin action following a compare match with compare register A (OCR1A) in TC1
-  // CS1 - Clock Select Bits: defines the prescaling source of TC1
-  //
-  // CTC1 = 1 --> count from 0, 1, 2 .. OCR1C, 0, 1, 2 .. ORC1C, etc 
-  // PWM1A = 1 --> PWM based on OCR1A
-  // COM1A = 10 --> Clear the OC1A output line for each compare match with OCR1A, set on $00
-  // CS0 = 0001 --> prescale = PCK/1 
-
-  // Clear all TCCR1 bits:
-  TCCR1 &= 0x00;      // Clear 
-
-  // Clear Timer/Counter on Compare Match
-  TCCR1 |= (1<<CTC1);
+    // Clear all TCCR1 bits:
+    TCCR1 &= B00000000;      // Clear 
   
-  // Enable PWM A
-  TCCR1 |= (1<<PWM1A);
+    // Clear Timer/Counter on Compare Match: count from 0, 1, 2 .. OCR1C, 0, 1, 2 .. ORC1C, etc
+    TCCR1 |= (1<<CTC1);
+    
+    // Enable PWM A based on OCR1A
+    TCCR1 |= (1<<PWM1A);
+    
+    // On Compare Match with OCR1A (counter == OCR1A): Clear the output line (-> LOW), set on $00
+    TCCR1 |= (1<<COM1A1);
   
-  // On Compare Match with OCR1A (counter == OCR1A): Clear the output line (-> LOW), set on $00
-  TCCR1 |= (1<<COM1A1);
-
-  // Set PWM frequency configuration:
-  TCCR1 |= TIMER1_PRESCALER;
-  // Count 0,1,2..compare-match,0,1,2..compare-match, etc
-  OCR1C = TIMER1_COUNT_TO;
-
-  // Determines Duty Cycle: OCR1A / OCR1C e.g. value of 50 / 200 --> 25%
-  OCR1A = 0;
+    // Configure PWM frequency:
+    TCCR1 |= TIMER1_PRESCALER;  // Prescale factor
+    OCR1C = TIMER1_COUNT_TO;    // Count 0,1,2..compare-match,0,1,2..compare-match, etc
+  
+    // Determines Duty Cycle: OCR1A / OCR1C e.g. value of 50 / 200 --> 25%,  value of 50 --> 0%
+    OCR1A = 0;
   #endif
 }
