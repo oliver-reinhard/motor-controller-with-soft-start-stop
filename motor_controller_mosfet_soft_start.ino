@@ -22,19 +22,19 @@ const uint16_t MOTOR_STOP_DURATION = 1000;  // [ms] duration from full throttle 
 
 #ifdef _ATMEGA328_
   //#define VERBOSE
-  const uint8_t MODE_SWITCH_IN_PIN = 2; // PD2 – digital in
+  const uint8_t MODE_SWITCH_IN_PIN = 2;     // PD2 – digital in
   const uint8_t POTENTIOMETER_IN_PIN = A0;  // analog in, motor power demand
   
-  const uint8_t STATUS_LED_OUT_PIN = 13; // PB5 - digital out; is on when motor is off, blinks while transitioning
-  const uint8_t MOTOR_OUT_PIN = 9; // PB1 - PWM
+  const uint8_t MOTOR_OUT_PIN = 3;          // PB1 - PWM
+  const uint8_t STATUS_LED_OUT_PIN = 4;     // PB5 - digital out; is on when motor is off, blinks while transitioning
 #endif 
 
 #ifdef _ATTINY85_
   const uint8_t MODE_SWITCH_IN_PIN = PB2;
-  const uint8_t POTENTIOMETER_IN_PIN = PB4;  // analog in, motor power demand
+  const uint8_t POTENTIOMETER_IN_PIN = PB4; // analog in, motor power demand
   
-  const uint8_t STATUS_LED_OUT_PIN = PB0; // digital out; is on when motor is off, blinks while transitioning
-  const uint8_t MOTOR_OUT_PIN = PB1; // PWM
+  const uint8_t MOTOR_OUT_PIN = PB1;        // PWM
+  const uint8_t STATUS_LED_OUT_PIN = PB0;   // digital out; is on when motor is off, blinks while transitioning
 #endif 
 
 //
@@ -64,12 +64,19 @@ uint16_t lastAnalogInValue = 0;
 //
 // ANALOG OUT
 //
+#ifdef _ATMEGA328_
+const uint8_t ANALOG_OUT_MIN = 0;        // Arduino constant
+const uint8_t ANALOG_OUT_MAX = 255;      // PWM control
+#endif
+#ifdef _ATTINY85_
 // PWM frequency = 1 MHz / 1 / 200 = 5 kHz 
 const uint8_t TIMER1_PRESCALER = 1;     // divide by 1
 const uint8_t TIMER1_COUNT_TO = 200;    // count to 255
 
 const uint8_t ANALOG_OUT_MIN = 0;                 // Arduino constant
 const uint8_t ANALOG_OUT_MAX = TIMER1_COUNT_TO;   // PWM control
+#endif
+
 const uint8_t MOTOR_OUT_LOW_THRESHOLD = (long) ANALOG_OUT_MAX * MOTOR_LOW_THRESHOLD_VOLTAGE /  MOTOR_MAX_VOLTAGE;
 
 // Motor soft start and soft stop:
