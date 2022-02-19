@@ -25,8 +25,8 @@ const uint16_t MOTOR_STOP_DURATION = 1000;  // [ms] duration from full throttle 
   const uint8_t MODE_SWITCH_IN_PIN = 2;     // PD2 – digital in
   const uint8_t POTENTIOMETER_IN_PIN = A0;  // analog in, motor power demand
   
-  const uint8_t MOTOR_OUT_PIN = 3;          // PB1 - PWM
-  const uint8_t STATUS_LED_OUT_PIN = 4;     // PB5 - digital out; is on when motor is off, blinks while transitioning
+  const uint8_t MOTOR_OUT_PIN = 3;          // PD3 - PWM
+  const uint8_t STATUS_LED_OUT_PIN = 4;     // PD4 - digital out; is on when motor is off, blinks while transitioning
 #endif 
 
 #ifdef _ATTINY85_
