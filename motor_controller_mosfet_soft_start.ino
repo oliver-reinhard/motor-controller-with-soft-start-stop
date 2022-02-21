@@ -4,6 +4,9 @@
 
 // --------------------
 // CONFIGURABLE VALUES
+//
+// Voltages are always in [mV].
+// Durations are always in [ms].
 // --------------------
 
 const uint16_t MOTOR_MAX_VOLTAGE           = 6000; // [mV]
@@ -25,7 +28,7 @@ const uint16_t MOTOR_STOP_DURATION = 1000;  // [ms] duration from full throttle 
   const uint8_t MODE_SWITCH_IN_PIN = 2;     // PD2 – digital in
   const uint8_t POTENTIOMETER_IN_PIN = A0;  // analog in, motor power demand
   
-  const uint8_t MOTOR_OUT_PIN = 3;          // PD3 - PWM
+  const uint8_t MOTOR_OUT_PIN = 3;          // PD3 - PWM @ native frequency
   const uint8_t STATUS_LED_OUT_PIN = 4;     // PD4 - digital out; is on when motor is off, blinks while transitioning
 #endif 
 
@@ -33,7 +36,7 @@ const uint16_t MOTOR_STOP_DURATION = 1000;  // [ms] duration from full throttle 
   const uint8_t MODE_SWITCH_IN_PIN = PB2;
   const uint8_t POTENTIOMETER_IN_PIN = PB4; // analog in, motor power demand
   
-  const uint8_t MOTOR_OUT_PIN = PB1;        // PWM
+  const uint8_t MOTOR_OUT_PIN = PB1;        // PWM @ 25 kHz
   const uint8_t STATUS_LED_OUT_PIN = PB0;   // digital out; is on when motor is off, blinks while transitioning
 #endif 
 
@@ -116,6 +119,7 @@ void setup() {
   
   configInt0Interrupt(); // triggered by PD2 (mode switch)
   configAnalogDigitalConversion0();
+  sei();
   configPWM1();
 
   #ifdef VERBOSE
@@ -146,10 +150,9 @@ void loop() {
 }
 
 //
-// Mode Switch pressed - Interrupt service routine for INT0
+// Mode Switch pressed
 //
-ISR (INT0_vect) {       
-  uint32_t now = millis();
+void handleInputPressed(uint32_t now) {
   if (now - lastMotorStateChangeTime < MIN_CONTROLLER_STATE_PERSISTENCE) {
     #ifdef VERBOSE
       Serial.println("Mode Switch pressed - ignored");
@@ -338,6 +341,11 @@ void configInt0Interrupt() {
     GIMSK |= (1<<INT0);      // Enable INT0 (external interrupt) 
     MCUCR |= (1<<ISC01);     // Configure as falling edge (pull-up resistor!)
   #endif
+}
+
+ISR (INT0_vect) {       // Interrupt service routine for INT0 on PB2
+  uint32_t now = millis();
+  handleInputPressed(now);
 }
 
 void configAnalogDigitalConversion0() {
