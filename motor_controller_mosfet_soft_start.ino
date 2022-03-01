@@ -20,10 +20,7 @@ const uint16_t MOTOR_STOP_DURATION = 1000;  // [ms] duration from full throttle 
 // DO NOT TOUCH THE VALUES OF THE FOLLOWING CONSTANTS
 // --------------------
 
-//#define _ATMEGA328_
-#define _ATTINY85_
-
-#ifdef _ATMEGA328_
+#ifdef __AVR_ATmega328P__
   //#define VERBOSE
   const uint8_t MODE_SWITCH_IN_PIN = 2;     // PD2 – digital in
   const uint8_t POTENTIOMETER_IN_PIN = A0;  // analog in, motor power demand
@@ -32,7 +29,7 @@ const uint16_t MOTOR_STOP_DURATION = 1000;  // [ms] duration from full throttle 
   const uint8_t STATUS_LED_OUT_PIN = 4;     // PD4 - digital out; is on when motor is off, blinks while transitioning
 #endif 
 
-#ifdef _ATTINY85_
+#ifdef __AVR_ATtiny85__
   const uint8_t MODE_SWITCH_IN_PIN = PB2;
   const uint8_t POTENTIOMETER_IN_PIN = PB4; // analog in, motor power demand
   
@@ -56,10 +53,10 @@ const uint32_t CONTROL_CYCLE_DURATION = 100; // [ms]
 // ANALOG IN
 //
 const uint16_t ANALOG_IN_MIN = 0;     // Arduino constant
-#ifdef _ATMEGA328_
+#ifdef __AVR_ATmega328P__
 const uint16_t ANALOG_IN_MAX = 1023;  // Arduino constant
 #endif
-#ifdef _ATTINY85_
+#ifdef __AVR_ATtiny85__
 const uint16_t ANALOG_IN_MAX = 255;  // Arduino constant
 uint16_t lastAnalogInValue = 0;
 #endif
@@ -67,11 +64,11 @@ uint16_t lastAnalogInValue = 0;
 //
 // ANALOG OUT
 //
-#ifdef _ATMEGA328_
+#ifdef __AVR_ATmega328P__
 const uint8_t ANALOG_OUT_MIN = 0;        // Arduino constant
 const uint8_t ANALOG_OUT_MAX = 255;      // PWM control
 #endif
-#ifdef _ATTINY85_
+#ifdef __AVR_ATtiny85__
 // PWM frequency = 1 MHz / 1 / 200 = 5 kHz 
 const uint8_t TIMER1_PRESCALER = 1;     // divide by 1
 const uint8_t TIMER1_COUNT_TO = 200;    // count to 255
@@ -290,10 +287,10 @@ void handleModeTransition(uint8_t targetDutyValue) {
 //
 void setMotorDutyValue(uint8_t value) {
   motorActualDutyValue = value;
-  #ifdef _ATMEGA328_
+  #ifdef __AVR_ATmega328P__
     analogWrite(MOTOR_OUT_PIN, value); // Send PWM signal
   #endif
-  #ifdef _ATTINY85_
+  #ifdef __AVR_ATtiny85__
     OCR1A = value;
   #endif
 }
@@ -317,10 +314,10 @@ void configInputWithPullup(uint8_t pin) {
 }
 
 uint16_t readPotentiometer() {
-  #ifdef _ATMEGA328_
+  #ifdef __AVR_ATmega328P__
     return analogRead(POTENTIOMETER_IN_PIN);
   #endif
-  #ifdef _ATTINY85_
+  #ifdef __AVR_ATtiny85__
     ADCSRA|=(1<<ADSC);                     // Start ADC conversion
     loop_until_bit_is_clear(ADCSRA, ADSC); // Wait until done
     uint16_t adcValue = ADCH;              // read left-adjusted 8 bits --> 0…255
@@ -333,11 +330,11 @@ void configOutput(uint8_t pin) {
 }
 
 void configInt0Interrupt() {
-  #ifdef _ATMEGA328_
+  #ifdef __AVR_ATmega328P__
     EIMSK |= (1<<INT0);      // Enable INT0 (external interrupt) 
     EICRA |= (1<<ISC01);     // Configure as falling edge (pull-up resistor!)
   #endif
-  #ifdef _ATTINY85_
+  #ifdef __AVR_ATtiny85__
     GIMSK |= (1<<INT0);      // Enable INT0 (external interrupt) 
     MCUCR |= (1<<ISC01);     // Configure as falling edge (pull-up resistor!)
   #endif
@@ -349,11 +346,11 @@ ISR (INT0_vect) {       // Interrupt service routine for INT0 on PB2
 }
 
 void configAnalogDigitalConversion0() {
-  #ifdef _ATMEGA328_
+  #ifdef __AVR_ATmega328P__
     // nothing --> analogRead
   #endif
   
-  #ifdef _ATTINY85_
+  #ifdef __AVR_ATtiny85__
     // | REFS1 | REFS0 | ADLAR | REFS2 | MUX[3:0] |
     // |  1    |  1    |  1    |  1    |  4       | ->  #bits
     
@@ -378,12 +375,12 @@ void configAnalogDigitalConversion0() {
 }
 
 void configPWM1() {
-  #ifdef _ATMEGA328_
+  #ifdef __AVR_ATmega328P__
     // nothing --> use analogWrite as is
     // No specific PWM frequency
   #endif
   
-  #ifdef _ATTINY85_
+  #ifdef __AVR_ATtiny85__
     // Configure Timer/Counter1 Control Register 1 (TCR1) 
     // | CTC1 | PWM1A | COM1A | CS |
     // |  1   |  1    |  2    | 4  |  ->  #bits
