@@ -1,6 +1,7 @@
 
-#include<avr/io.h>
-#include<util/delay.h>
+#include <avr/io.h>
+#include <util/delay.h>
+#include "io_util.h"
 
 // --------------------
 // CONFIGURABLE VALUES
@@ -9,39 +10,38 @@
 // Durations are always in [ms].
 // --------------------
 
-const uint16_t MOTOR_MAX_VOLTAGE           = 6000; // [mV]
-const uint16_t MOTOR_LOW_THRESHOLD_VOLTAGE = 2500; // [mV] // below this voltage, the motor will not rotate
+const millivolt_t MOTOR_MAX_VOLTAGE           = 6000;   // [mV]
+const millivolt_t MOTOR_LOW_THRESHOLD_VOLTAGE = 2500;   // [mV] // below this voltage, the motor will not rotate
 
 // Motor soft start and stop:
-const uint16_t MOTOR_START_DURATION = 2000;  // [ms] duration from full stop to full throttle
-const uint16_t MOTOR_STOP_DURATION = 1000;  // [ms] duration from full throttle to full stop
+const millivolt_t MOTOR_START_DURATION = 2000;  // [ms] duration from full stop to full throttle
+const millivolt_t MOTOR_STOP_DURATION = 1000;   // [ms] duration from full throttle to full stop
 
 // --------------------
 // DO NOT TOUCH THE VALUES OF THE FOLLOWING CONSTANTS
 // --------------------
 
-#ifdef __AVR_ATmega328P__
+#if defined(__AVR_ATmega328P__)
   //#define VERBOSE
-  const uint8_t MODE_SWITCH_IN_PIN = 2;     // PD2 – digital in
-  const uint8_t POTENTIOMETER_IN_PIN = A0;  // analog in, motor power demand
+  const pin_t MODE_SWITCH_IN_PIN = 2;     // PD2 – digital in
+  const pin_t POTENTIOMETER_IN_PIN = A0;  // analog in, motor power demand
   
-  const uint8_t MOTOR_OUT_PIN = 3;          // PD3 - PWM @ native frequency
-  const uint8_t STATUS_LED_OUT_PIN = 4;     // PD4 - digital out; is on when motor is off, blinks while transitioning
-#endif 
-
-#ifdef __AVR_ATtiny85__
-  const uint8_t MODE_SWITCH_IN_PIN = PB2;
-  const uint8_t POTENTIOMETER_IN_PIN = PB4; // analog in, motor power demand
+  const pin_t MOTOR_OUT_PIN = 3;          // PD3 - PWM @ native frequency
+  const pin_t STATUS_LED_OUT_PIN = 4;     // PD4 - digital out; is on when motor is off, blinks while transitioning
+    
+#elif defined(__AVR_ATtiny85__)
+  const pin_t MODE_SWITCH_IN_PIN = PB2;
+  const pin_t POTENTIOMETER_IN_PIN = PB4; // analog in, motor power demand
   
-  const uint8_t MOTOR_OUT_PIN = PB1;        // PWM @ 25 kHz
-  const uint8_t STATUS_LED_OUT_PIN = PB0;   // digital out; is on when motor is off, blinks while transitioning
+  const pin_t MOTOR_OUT_PIN = PB1;        // PWM @ 25 kHz
+  const pin_t STATUS_LED_OUT_PIN = PB0;   // digital out; is on when motor is off, blinks while transitioning
 #endif 
 
 //
 // CONTROLLER STATES
 //
 
-enum MotorState {MOTOR_OFF, MOTOR_STARTING, MOTOR_ON, MOTOR_STOPPING};
+typedef enum {MOTOR_OFF, MOTOR_STARTING, MOTOR_ON, MOTOR_STOPPING} MotorState;
 
 MotorState motorState = MOTOR_OFF;
 
@@ -53,28 +53,28 @@ const uint32_t CONTROL_CYCLE_DURATION = 100; // [ms]
 // ANALOG IN
 //
 const uint16_t ANALOG_IN_MIN = 0;     // Arduino constant
-#ifdef __AVR_ATmega328P__
-const uint16_t ANALOG_IN_MAX = 1023;  // Arduino constant
-#endif
-#ifdef __AVR_ATtiny85__
-const uint16_t ANALOG_IN_MAX = 255;  // Arduino constant
-uint16_t lastAnalogInValue = 0;
+#if defined(__AVR_ATmega328P__)
+  const uint16_t ANALOG_IN_MAX = 1023;  // Arduino constant
+    
+#elif defined(__AVR_ATtiny85__)
+  const uint16_t ANALOG_IN_MAX = 255;  // Arduino constant
+  uint16_t lastAnalogInValue = 0;
 #endif
 
 //
 // ANALOG OUT
 //
-#ifdef __AVR_ATmega328P__
-const uint8_t ANALOG_OUT_MIN = 0;        // Arduino constant
-const uint8_t ANALOG_OUT_MAX = 255;      // PWM control
-#endif
-#ifdef __AVR_ATtiny85__
+#if defined(__AVR_ATmega328P__)
+  const uint8_t ANALOG_OUT_MIN = 0;        // Arduino constant
+  const uint8_t ANALOG_OUT_MAX = 255;      // PWM control
+    
+#elif defined(__AVR_ATtiny85__)
 // PWM frequency = 1 MHz / 1 / 200 = 5 kHz 
-const uint8_t TIMER1_PRESCALER = 1;     // divide by 1
-const uint8_t TIMER1_COUNT_TO = 200;    // count to 255
-
-const uint8_t ANALOG_OUT_MIN = 0;                 // Arduino constant
-const uint8_t ANALOG_OUT_MAX = TIMER1_COUNT_TO;   // PWM control
+  const uint8_t TIMER1_PRESCALER = 1;     // divide by 1
+  const uint8_t TIMER1_CTC_COUNT_TO = 200;    // count to 255
+  
+  const uint8_t ANALOG_OUT_MIN = 0;                 // Arduino constant
+  const uint8_t ANALOG_OUT_MAX = TIMER1_CTC_COUNT_TO;   // PWM control
 #endif
 
 const uint8_t MOTOR_OUT_LOW_THRESHOLD = (uint32_t) ANALOG_OUT_MAX * MOTOR_LOW_THRESHOLD_VOLTAGE /  MOTOR_MAX_VOLTAGE;
@@ -102,7 +102,7 @@ const uint32_t MIN_CONTROLLER_STATE_PERSISTENCE = 1000; // milliseconds
 //
 // DIGITAL OUT
 //
-uint8_t statusLEDState = LOW;
+boolean statusLEDState = LOW;
 
 //
 // SETUP
@@ -287,15 +287,15 @@ void handleModeTransition(uint8_t targetDutyValue) {
 //
 void setMotorDutyValue(uint8_t value) {
   motorActualDutyValue = value;
-  #ifdef __AVR_ATmega328P__
+  #if defined(__AVR_ATmega328P__)
     analogWrite(MOTOR_OUT_PIN, value); // Send PWM signal
-  #endif
-  #ifdef __AVR_ATtiny85__
+    
+  #elif defined(__AVR_ATtiny85__)
     OCR1A = value;
   #endif
 }
 
-void setStatusLED(uint8_t value) {
+void setStatusLED(boolean value) {
   statusLEDState = value;
   digitalWrite(STATUS_LED_OUT_PIN, value);
 }
@@ -304,20 +304,11 @@ void invertStatusLED() {
   setStatusLED(statusLEDState == HIGH ? LOW : HIGH);
 }
 
-void configInput(uint8_t pin) {
-  pinMode(pin, INPUT);
-}
-
-void configInputWithPullup(uint8_t pin) {
-  pinMode(pin, INPUT);
-  digitalWrite(pin, HIGH);              // Activate pull-up resistor on pin (input)
-}
-
 uint16_t readPotentiometer() {
-  #ifdef __AVR_ATmega328P__
+  #if defined(__AVR_ATmega328P__)
     return analogRead(POTENTIOMETER_IN_PIN);
-  #endif
-  #ifdef __AVR_ATtiny85__
+    
+  #elif defined(__AVR_ATtiny85__)
     ADCSRA|=(1<<ADSC);                     // Start ADC conversion
     loop_until_bit_is_clear(ADCSRA, ADSC); // Wait until done
     uint16_t adcValue = ADCH;              // read left-adjusted 8 bits --> 0…255
@@ -325,16 +316,12 @@ uint16_t readPotentiometer() {
   #endif
 }
 
-void configOutput(uint8_t pin) {
-  pinMode(pin, OUTPUT);
-}
-
 void configInt0Interrupt() {
   #ifdef __AVR_ATmega328P__
     EIMSK |= (1<<INT0);      // Enable INT0 (external interrupt) 
     EICRA |= (1<<ISC01);     // Configure as falling edge (pull-up resistor!)
-  #endif
-  #ifdef __AVR_ATtiny85__
+    
+  #elif defined(__AVR_ATtiny85__)
     GIMSK |= (1<<INT0);      // Enable INT0 (external interrupt) 
     MCUCR |= (1<<ISC01);     // Configure as falling edge (pull-up resistor!)
   #endif
@@ -346,11 +333,10 @@ ISR (INT0_vect) {       // Interrupt service routine for INT0 on PB2
 }
 
 void configAnalogDigitalConversion0() {
-  #ifdef __AVR_ATmega328P__
+  #if defined(__AVR_ATmega328P__)
     // nothing --> analogRead
-  #endif
-  
-  #ifdef __AVR_ATtiny85__
+    
+  #elif defined(__AVR_ATtiny85__)
     // | REFS1 | REFS0 | ADLAR | REFS2 | MUX[3:0] |
     // |  1    |  1    |  1    |  1    |  4       | ->  #bits
     
@@ -375,12 +361,11 @@ void configAnalogDigitalConversion0() {
 }
 
 void configPWM1() {
-  #ifdef __AVR_ATmega328P__
+  #if defined(__AVR_ATmega328P__)
     // nothing --> use analogWrite as is
     // No specific PWM frequency
-  #endif
-  
-  #ifdef __AVR_ATtiny85__
+    
+  #elif defined(__AVR_ATtiny85__)
     // Configure Timer/Counter1 Control Register 1 (TCR1) 
     // | CTC1 | PWM1A | COM1A | CS |
     // |  1   |  1    |  2    | 4  |  ->  #bits
@@ -393,7 +378,7 @@ void configPWM1() {
     // Clear all TCCR1 bits:
     TCCR1 &= B00000000;      // Clear 
   
-    // Clear Timer/Counter on Compare Match: count from 0, 1, 2 .. OCR1C, 0, 1, 2 .. ORC1C, etc
+    // Clear Timer/Counter on Compare Match (CTC): count from 0, 1, 2 .. OCR1C, 0, 1, 2 .. ORC1C, etc
     TCCR1 |= (1<<CTC1);
     
     // Enable PWM A based on OCR1A
@@ -404,7 +389,7 @@ void configPWM1() {
   
     // Configure PWM frequency:
     TCCR1 |= TIMER1_PRESCALER;  // Prescale factor
-    OCR1C = TIMER1_COUNT_TO;    // Count 0,1,2..compare-match,0,1,2..compare-match, etc
+    OCR1C = TIMER1_CTC_COUNT_TO;    // Count 0,1,2..compare-match,0,1,2..compare-match, etc
   
     // Determines Duty Cycle: OCR1A / OCR1C e.g. value of 50 / 200 --> 25%,  value of 50 --> 0%
     OCR1A = 0;
